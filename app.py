@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify
 import torch
-import timm
 from PIL import Image
 import torchvision.transforms as transforms
 from config import CLASSES
@@ -8,21 +7,11 @@ import os
 
 app = Flask(__name__)
 
-# ✅ 修复路径（Render必须这样写）
+# ✅ 正确路径
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "fracture_model.pt")
 
-# ✅ 初始化模型
-model = timm.create_model(
-    "mobilenetv3_small_100",
-    pretrained=False,
-    num_classes=len(CLASSES)
-)
-
-# ✅ 关键修复（PyTorch 2.6+ 必须）
-model.load_state_dict(
-    torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
-)
-
+# ✅ 直接加载 TorchScript 模型（关键！）
+model = torch.jit.load(MODEL_PATH, map_location="cpu")
 model.eval()
 
 # ✅ 图片预处理
@@ -57,7 +46,7 @@ def predict():
             "status": "failed"
         })
 
-# ✅ Render必须监听这个端口
+# ✅ Render端口适配
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
