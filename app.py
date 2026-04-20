@@ -8,35 +8,37 @@ import os
 
 app = Flask(__name__)
 
-# ✅ 关键：绝对路径（解决 Render 找不到模型）
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "fracture_model.pt")
+# ✅ 修复路径（Render必须这样写）
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "fracture_model.pt")
 
-# ✅ 加载模型
+# ✅ 初始化模型
 model = timm.create_model(
     "mobilenetv3_small_100",
     pretrained=False,
     num_classes=len(CLASSES)
 )
 
-model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+# ✅ 关键修复（PyTorch 2.6+ 必须）
+model.load_state_dict(
+    torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+)
+
 model.eval()
 
-# ✅ 图像预处理
+# ✅ 图片预处理
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
 ])
 
-# ✅ 接口
+@app.route("/")
+def home():
+    return "Fracture AI is running"
+
 @app.route("/predict", methods=["POST"])
 def predict():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
-
     try:
+        file = request.files["file"]
         img = Image.open(file).convert("RGB")
         img = transform(img).unsqueeze(0)
 
@@ -44,13 +46,18 @@ def predict():
             output = model(img)
             pred = torch.argmax(output, 1).item()
 
-        return jsonify({"result": CLASSES[pred]})
+        return jsonify({
+            "result": CLASSES[pred],
+            "status": "success"
+        })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "status": "failed"
+        })
 
-
-# ✅ 关键：适配 Render 端口
+# ✅ Render必须监听这个端口
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
